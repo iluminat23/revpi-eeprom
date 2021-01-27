@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,7 @@ int main(int argc, char *argv[])
 	int image_fd;
 	struct stat st;
 	size_t image_size;
+	uint8_t *image_buf;
 	/* FIXME: Use O_WRONLY, as we should not need to read the eeprom. */
 	eeprom_fd = open(EEPROM_PATH, O_RDWR | O_SYNC);
 	if (eeprom_fd < 0) {
@@ -63,5 +65,33 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	image_buf = malloc(image_size);
+	if (image_buf == NULL) {
+		fprintf(stderr, "ERROR: Can't allocate memory for the image buffer: %s\n",
+		        strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	ret = read(image_fd, image_buf, image_size);
+	if (ret != image_size) {
+		fprintf(stderr, "ERROR: Can't read image: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	uint8_t val = 0xff;
+	/* erase the whole eeprom first */
+	for (int i = 0; i < EEPROM_SIZE; i + sizeof(val)) {
+		ret = write(eeprom_fd, &val, sizeof(val));
+		if (ret != sizeof(val)) {
+			fprintf(stderr, "ERROR: Can't erase eeprom @0x%04x.\n", i);
+			exit(EXIT_FAILURE);
+		}
+	}
+	ret = write(eeprom_fd, image_buf, image_size);
+	if (ret != image_size) {
+		fprintf(stderr, "ERROR: Can't write image to the EEPROM\n",
+		        strerror(errno));
+		exit(EXIT_FAILURE);
+	}
 	return 0;
 }
